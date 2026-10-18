@@ -2,7 +2,20 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: 
+      - main
+    paths-ignore:
+      - "README.md"
+
+  # Allow you to run the workflow maneully
+  workflow_dispatch:
+
+concurrency:
+  group: agentic-chatbot-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read  
 
 jobs:
   # =========================================================================
@@ -23,8 +36,8 @@ jobs:
 
       - name: Install Project & Run Tests
         run: |
-          uv pip install -e .
-          echo "Kofi is running"
+          uv sync --frozen
+          echo "✅ Kofi-emma project sync completed cleanly!"
 
   # =========================================================================
   # JOB 2: PUSH TO REGISTRY (Builds container and pushes to Docker Hub)
@@ -51,6 +64,7 @@ jobs:
             echo "IMAGE_NAME secret is missing."
             exit 1
           fi
+          echo "Docker image settings are configured"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -82,8 +96,15 @@ jobs:
     needs: push_to_registry
     runs-on: self-hosted # Using cloud runners instead of a complex self-hosted agent
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Log in to DOcker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }} 
+
+
+      # - name: Checkout repository
+      #   uses: actions/checkout@v4
 
       # Validate all tool keys matching screenshots 3 & 4
       - name: Validate application secrets
@@ -113,13 +134,85 @@ jobs:
           echo "All integration API keys validated successfully!"
 
       # Connect directly to your cloud instance and deploy
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Deploy to AWS App Runner
+      - name: Pull latest Docker image
+        env:
+          IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}
         run: |
-          aws apprunner start-deployment --service-arn ${{ secrets.AWS_APP_RUNNER_SERVICE_ARN }}
+          docker pull "${IMAGE_PATH}:main"
+
+      - name: Stop and remove existing container
+        run: |
+          docker rm -f stapp 2>/dev/null || true
+
+      - name: Run Streamlit container
+        env:
+          LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}
+          IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_IMAGENAME }}
+          # Pass your external AI tool environment keys safely into the Docker runtime container
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          LANGSMITH_TRACING: ${{ secrets.LANGSMITH_TRACING }}
+          LANGSMITH_ENDPOINT: ${{ secrets.LANGSMITH_ENDPOINT }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+        run: |
+          docker run -d \
+            --restart unless-stopped \
+            --name stapp \
+            -p 8501:8501 \
+            -e GROQ_API_KEY \
+            -e LANGSMITH_TRACING \
+            -e LANGSMITH_ENDPOINT \
+            -e LANGSMITH_API_KEY \
+            -e LANGSMITH_PROJECT \
+            "${IMAGE_PATH}:main"
+
+      
+ 
+            # =========================================================================
+      # VERIFY CONTAINER IS RUNNING (Matches your screenshots perfectly)
+      # =========================================================================
+      - name: Verify container is running
+        run: |
+          sleep 10
+          
+          if ! docker ps \
+            --filter "name=^stapp$" \
+            --filter "status=running" \
+            --format "{{.Names}}" | grep -q "^stapp$"; then
+            
+            echo "The Streamlit container failed to start."
+            docker logs stapp || true
+            exit 1
+          fi
+          
+          echo "The Streamlit container is running."
+          docker ps --filter "name=^stapp$"
+
+      # =========================================================================
+      # VERIFY HEALTH ENDPOINT (Matches the second step in screenshot 2)
+      # =========================================================================
+      - name: Verify Streamlit health endpoint
+        run: |
+          for attempt in $(seq 1 12); do
+            if docker exec stapp python -c \
+              "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5)"; then
+              echo "Streamlit health check passed successfully!"
+              exit 0
+            fi
+            echo "Waiting for Streamlit to initialize (Attempt $attempt/12)..."
+            sleep 5
+          done
+          # Trigger fallback steps if health check fails
+          echo "Streamlit health endpoint did not become healthy."
+          docker logs --tail 100 stapp || true
+          exit 1
+
+      - name: Show recent application logs
+        if: always()
+        run: |
+          docker logs --tail 50 stapp 2>/dev/null || true
+
+      # NEW: Cleanup block to save server hard drive space
+      - name: Remove unused Docker images
+        if: always()
+        run: |
+          docker image prune -f
