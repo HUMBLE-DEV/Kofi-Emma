@@ -147,7 +147,7 @@ jobs:
       - name: Run Streamlit container
         env:
           LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}
-          IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_IMAGENAME }}
+          IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}
           # Pass your external AI tool environment keys safely into the Docker runtime container
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           LANGSMITH_TRACING: ${{ secrets.LANGSMITH_TRACING }}
