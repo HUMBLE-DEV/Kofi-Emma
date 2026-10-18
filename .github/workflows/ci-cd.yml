@@ -158,7 +158,7 @@ jobs:
             --restart unless-stopped \
             --name stapp \
             -p 8501:8501 \
-            -e GOOGLE_API_KEY
+            -e GOOGLE_API_KEY \
             -e GROQ_API_KEY \
             -e TAVILY_API_KEY \
             -e LANGSMITH_TRACING \
