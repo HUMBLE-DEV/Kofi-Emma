@@ -2,7 +2,7 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: 
+    branches:
       - main
     paths-ignore:
       - "README.md"
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read  
+  contents: read
 
 jobs:
   # =========================================================================
@@ -23,6 +23,19 @@ jobs:
   # =========================================================================
   integration:
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: sqlite+aiosqlite:///./test_research_agent.db
+      REDIS_URL: redis://localhost:6379/0
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,7 +50,15 @@ jobs:
       - name: Install Project & Run Tests
         run: |
           uv sync --frozen
-          echo "✅ Kofi-emma project sync completed cleanly!"
+          echo "✅ ScholarGraph project sync completed cleanly!"
+
+      - name: Run auth test suite
+        run: |
+          uv run python tests/test_auth.py
+
+      - name: Verify strict token blocklist mode
+        run: |
+          uv run python tests/test_strict_mode.py
 
   # =========================================================================
   # JOB 2: PUSH TO REGISTRY (Builds container and pushes to Docker Hub)
@@ -50,7 +71,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Validate settings exactly like screenshot 1
+      # Validate Docker image settings
       - name: Validate Docker image settings
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
@@ -69,132 +90,239 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Logs into your Docker Hub account cleanly
+      # Logs into Docker Hub cleanly
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Builds the app and pushes it straight to Docker Hub matching screenshot 2
-      - name: Build and push Docker image
+      # Builds the app and pushes it straight to Docker Hub
+      - name: Build and push Backend image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          target: backend
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}:main
-            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}:sha-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}-backend:main
+            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}-backend:sha-${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+
+        # 🚨 Build the Frontend Image
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}-frontend:main
+            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}-frontend:sha-${{ github.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
   # =========================================================================
-  # JOB 3: CONTINUOUS DEPLOYMENT (Deploys your application to AWS)
+  # JOB 3: CONTINUOUS DEPLOYMENT (Deploys backend, worker and frontend)
   # =========================================================================
   continuous_deployment:
     needs: push_to_registry
-    runs-on: self-hosted # Using cloud runners instead of a complex self-hosted agent
+    runs-on: self-hosted
     steps:
-      - name: Log in to DOcker Hub
+      - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }} 
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-
-      # - name: Checkout repository
-      #   uses: actions/checkout@v4
-
-      # Validate all tool keys matching screenshots 3 & 4
       - name: Validate application secrets
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
-          LANGSMITH_TRACING: ${{secrets.LANGSMITH_TRACING}}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}
-          LANGSMITH_ENDPOINT: ${{ secrets.LANGSMITH_ENDPOINT }}
-          LANGSMITH_AGENT_ID: ${{secrets.LANGSMITH_AGENT_ID}}
         run: |
-          if [ -z "$GOOGLE_API_KEY" ]; then
-            echo "GOOGLE_API_KEY secret is missing."
-            exit 1
-          fi
-          if [ -z "$TAVILY_API_KEY" ]; then
-            echo "TAVILY_API_KEY secret is missing."
-            exit 1
-          fi
-          if [ -z "$LANGSMITH_API_KEY" ]; then
-            echo "LANGSMITH_API_KEY secret is missing."
-            exit 1
-          fi
+          for var in GOOGLE_API_KEY GROQ_API_KEY TAVILY_API_KEY SECRET_KEY \
+                     MAIL_USERNAME MAIL_PASSWORD MAIL_FROM LANGSMITH_API_KEY; do
+            if [ -z "${!var}" ]; then
+              echo "$var secret is missing."
+              exit 1
+            fi
+          done
           echo "All integration API keys validated successfully!"
 
-      # Connect directly to your cloud instance and deploy
-      - name: Pull latest Docker image
+      - name: Pull latest Docker images
         env:
           IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}
         run: |
-          docker pull "${IMAGE_PATH}:main"
+          docker pull "${IMAGE_PATH}-backend:main"
+          docker pull "${IMAGE_PATH}-frontend:main"
 
-      - name: Stop and remove existing container
+      - name: Stop and remove existing containers
         run: |
-          docker rm -f stapp 2>/dev/null || true
+          docker rm -f ScholarGraph-backend ScholarGraph-celery ScholarGraph-redis stapp 2>/dev/null || true
+          docker network rm scholargraph-net 2>/dev/null || true
+          
+      - name: Create Docker Network & Volumes
+        run: |
+          docker network create scholargraph-net
+          docker volume create scholargraph_chroma
+          docker volume create scholargraph_uploads
 
-      - name: Run Streamlit container
+      # ── Redis (token blocklist + Celery broker) ──
+      - name: Start Redis container
+        run: |
+          docker run -d \
+            --restart unless-stopped \
+            --name ScholarGraph-redis \
+            --network scholargraph-net \
+            redis:7-alpine
+
+      # ── FastAPI backend ──
+      - name: Run FastAPI backend container
         env:
           IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
-          LANGSMITH_TRACING: ${{secrets.LANGSMITH_TRACING}}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
+          MAIL_SERVER: ${{ secrets.MAIL_SERVER }}
+          MAIL_PORT: ${{ secrets.MAIL_PORT }}
+          PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}
-          LANGSMITH_ENDPOINT: ${{ secrets.LANGSMITH_ENDPOINT }}
-          LANGSMITH_AGENT_ID: ${{secrets.LANGSMITH_AGENT_ID}}
-  
+          TOKEN_BLOCKLIST_STRICT: "true"
+        run: |
+          docker run -d \
+            --restart unless-stopped \
+            --name ScholarGraph-backend \
+            --network scholargraph-net \
+            -p 8000:8000 \
+            -v scholargraph_chroma:/app/data/chroma_db \
+            -v scholargraph_uploads:/app/uploads \
+            -e GOOGLE_API_KEY \
+            -e GROQ_API_KEY \
+            -e TAVILY_API_KEY \
+            -e SECRET_KEY \
+            -e MAIL_USERNAME \
+            -e MAIL_PASSWORD \
+            -e MAIL_FROM \
+            -e MAIL_FROM_NAME \
+            -e MAIL_SERVER \
+            -e MAIL_PORT \
+            -e PUBLIC_BASE_URL \
+            -e TOKEN_BLOCKLIST_STRICT \
+            -e LANGSMITH_API_KEY \
+            -e LANGCHAIN_TRACING_V2="true" \
+            -e LANGCHAIN_PROJECT="ScholarGraph-Prod" \
+            -e REDIS_URL=redis://ScholarGraph-redis:6379/0 \
+            -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
+            "${IMAGE_PATH}-backend:main"
+
+      # ── Celery worker ──
+      - name: Run Celery worker container
+        env:
+          IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
+          MAIL_SERVER: ${{ secrets.MAIL_SERVER }}
+          MAIL_PORT: ${{ secrets.MAIL_PORT }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+        run: |
+          docker run -d \
+            --restart unless-stopped \
+            --name ScholarGraph-celery \
+            --network scholargraph-net \
+            -v scholargraph_chroma:/app/data/chroma_db \
+            -v scholargraph_uploads:/app/uploads \
+            -e GOOGLE_API_KEY \
+            -e GROQ_API_KEY \
+            -e TAVILY_API_KEY \
+            -e SECRET_KEY \
+            -e MAIL_USERNAME \
+            -e MAIL_PASSWORD \
+            -e MAIL_FROM \
+            -e MAIL_FROM_NAME \
+            -e MAIL_SERVER \
+            -e MAIL_PORT \
+            -e LANGSMITH_API_KEY \
+            -e LANGCHAIN_TRACING_V2="true" \
+            -e LANGCHAIN_PROJECT="ScholarGraph-Prod" \
+            -e REDIS_URL=redis://ScholarGraph-redis:6379/0 \
+            -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
+            "${IMAGE_PATH}-backend:main" \
+            celery -A src.celery_worker.celery_app worker --loglevel=info
+
+      # ── Streamlit frontend ──
+      - name: Run Streamlit container
+        env:
+          IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}
+          API_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+          FRONTEND_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
         run: |
           docker run -d \
             --restart unless-stopped \
             --name stapp \
+            --network scholargraph-net \
             -p 8501:8501 \
-            -e GOOGLE_API_KEY \
-            -e GROQ_API_KEY \
-            -e TAVILY_API_KEY \
-            -e LANGSMITH_TRACING \
-            -e LANGSMITH_ENDPOINT \
-            -e LANGSMITH_API_KEY \
-            -e LANGSMITH_PROJECT \
-            -e LANGSMITH_AGENT_ID \
-            "${IMAGE_PATH}:main"
+            -e API_BASE_URL \
+            -e FRONTEND_BASE_URL \
+            "${IMAGE_PATH}-frontend:main"
 
-      
- 
-            # =========================================================================
-      # VERIFY CONTAINER IS RUNNING (Matches your screenshots perfectly)
       # =========================================================================
-      - name: Verify container is running
+      # VERIFY CONTAINERS ARE RUNNING
+      # =========================================================================
+      - name: Verify containers are running
         run: |
           sleep 10
-          
-          if ! docker ps \
-            --filter "name=^stapp$" \
-            --filter "status=running" \
-            --format "{{.Names}}" | grep -q "^stapp$"; then
-            
-            echo "The Streamlit container failed to start."
-            docker logs stapp || true
-            exit 1
-          fi
-          
-          echo "The Streamlit container is running."
-          docker ps --filter "name=^stapp$"
+          for name in ScholarGraph-redis ScholarGraph-backend ScholarGraph-celery stapp; do
+            if ! docker ps \
+              --filter "name=^${name}$" \
+              --filter "status=running" \
+              --format "{{.Names}}" | grep -q "^${name}$"; then
+              echo "The ${name} container failed to start."
+              docker logs "${name}" || true
+              exit 1
+            fi
+            echo "✅ ${name} is running."
+          done
 
-      # =========================================================================
-      # VERIFY HEALTH ENDPOINT (Matches the second step in screenshot 2)
-      # =========================================================================
+      - name: Verify FastAPI health endpoint
+        run: |
+          for attempt in $(seq 1 12); do
+            if docker exec ScholarGraph-backend python -c \
+              "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"; then
+              echo "FastAPI health check passed successfully!"
+              exit 0
+            fi
+            echo "Waiting for FastAPI to initialize (Attempt $attempt/12)..."
+            sleep 5
+          done
+          echo "FastAPI health endpoint did not become healthy."
+          docker logs --tail 100 ScholarGraph-backend || true
+          exit 1
+
+      - name: Verify Celery worker registered the Send_email task
+        run: |
+          docker exec ScholarGraph-celery celery -A src.celery_worker.celery_app inspect registered 2>&1 | grep -q "Send_email" \
+            && echo "✅ Celery worker has the Send_email task registered." \
+            || { echo "❌ Send_email task not registered."; docker logs ScholarGraph-celery; exit 1; }
+
       - name: Verify Streamlit health endpoint
         run: |
           for attempt in $(seq 1 12); do
@@ -206,7 +334,6 @@ jobs:
             echo "Waiting for Streamlit to initialize (Attempt $attempt/12)..."
             sleep 5
           done
-          # Trigger fallback steps if health check fails
           echo "Streamlit health endpoint did not become healthy."
           docker logs --tail 100 stapp || true
           exit 1
@@ -214,10 +341,11 @@ jobs:
       - name: Show recent application logs
         if: always()
         run: |
+          docker logs --tail 50 ScholarGraph-backend 2>/dev/null || true
+          docker logs --tail 50 ScholarGraph-celery 2>/dev/null || true
           docker logs --tail 50 stapp 2>/dev/null || true
 
-      # NEW: Cleanup block to save server hard drive space
-      - name: Remove unused Docker images
+      - name: "Cleanup: Remove unused Docker images"
         if: always()
         run: |
           docker image prune -f

@@ -1,0 +1,88 @@
+name: scholargraph # Fixes the folder naming issue
+
+services:
+  # ── Redis ──
+  redis:
+    image: redis:7-alpine
+    container_name: scholargraph-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Backend ──
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend # 🚨 Use the backend stage
+    container_name: scholargraph-backend
+    init: true
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://scholargraph-redis:6379/0
+      - API_BASE_URL=${PUBLIC_BASE_URL}
+      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL}
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/research_agent.db
+    depends_on:
+      - redis
+    volumes:
+      - chroma_data:/app/data/chroma_db
+      - uploads_data:/app/uploads
+      - app_data:/app/data
+
+  # ── Celery Worker ──
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend # 🚨 Uses the SAME backend image
+    container_name: scholargraph-celery
+    init: true
+    restart: unless-stopped
+    command: ["celery", "-A", "src.celery_worker.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://scholargraph-redis:6379/0
+    depends_on:
+      - redis
+      - backend
+    volumes:
+      - chroma_data:/app/data/chroma_db
+      - uploads_data:/app/uploads
+      - app_data:/app/data
+
+  # ── Streamlit Frontend ──
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend 
+    container_name: scholargraph-frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
+      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL}
+    depends_on:
+      - backend
+    ports:
+      - "80:8501"
+    volumes:
+      - uploads_data:/app/uploads
+
+volumes:
+  redis_data:
+  chroma_data:
+  uploads_data:
+  app_data:

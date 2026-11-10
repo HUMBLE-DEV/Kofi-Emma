@@ -220,3 +220,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local databases (SQLite) and server logs
+*.db
+*.db-journal
+research_agent.db
+test_research_agent.db
+server.log
+*.log
+

@@ -1,22 +1,88 @@
 [project]
-name = "kofi-emma"
-version = "0.1.0"
-description = "Add your description here"
+name = "ScholarGraph"
+version = "1.0.0"
+description = "AI research assistant platform: LangGraph agent, document pipeline and JWT auth"
 readme = "README.md"
 requires-python = ">=3.12"
+ 
 dependencies = [
-    "faiss-cpu>=1.15.1",
+    # ── Web API ──
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.9",
+    "pydantic>=2.14.1",
+    "pydantic-settings>=2.4.0",
+    "python-dotenv>=1.2.4",
+    "certifi>=2024.8.30",
+    "httpx>=0.27.0",
+    "requests>=2.31.0",
+    "aiofiles>=25.1.0",
+    # ── Database ──
+    "sqlmodel>=0.0.22",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "greenlet>=3.0.0",
+    "asyncpg>=0.30.0",
+    "aiosqlite>=0.21.0",
+    # ── Auth and email ──
+    "python-jose[cryptography]>=3.3.0",
+    "bcrypt>=4.0.1",
+    "itsdangerous>=2.2.0",
+    "fastapi-mail>=1.5.0",
+    "pydantic[email]>=2.14.1",
+    # ── Background jobs ──
+    "redis>=5.0.0",
+    "celery[redis]>=5.3.0",
+    "flower>=2.0.1",
+    # ── AI agent ──
+    "langchain-core>=1.0.0",
+    "langchain-experimental>=0.4.2",
     "langchain-community>=0.4.2",
     "langchain-google-genai>=4.4.2",
     "langchain-groq>=1.1.3",
     "langchain-tavily>=0.2.18",
+    "tavily-python>=0.8.5",
     "langchain-text-splitters>=1.1.3",
     "langgraph>=1.2.15",
     "langgraph-checkpoint-sqlite>=3.1.2",
     "langsmith==0.9.3",
-    "pydantic>=2.14.1",
+    # ── Documents and vector search ──
     "pypdf>=6.20.1",
-    "python-dotenv>=1.2.4",
-    "streamlit>=1.66.0",
-    "tavily-python>=0.8.5",
+    "docx2txt>=0.8",
+    "chromadb>=1.0.0",
+    "langchain-chroma>=1.1.0",
+    "langchain-huggingface>=1.2.3",
+    "sentence-transformers>=6.2.0",
+    "torch>=2.0.0",
 ]
+ 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+# Only the Streamlit container needs these. Keeping them out of the main list keeps the API image smaller.
+frontend = [
+    "streamlit>=1.66.0",
+    "requests>=2.31.0",
+]
+# Parked until the data-analysis agent is built.
+analysis = [
+    "pandas>=3.0.6",
+    "matplotlib>=3.11.2",
+]
+ 
+[tool.uv]
+package = false
+default-groups = ["dev", "frontend"]
+ 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
