@@ -138,7 +138,6 @@ Generate real secrets — never ship the placeholders:
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(48))"   # SECRET_KEY
 python -c "import secrets; print(secrets.token_urlsafe(48))"   # PASSWORD_RESET_TOKEN_SECRET
-python -c "import secrets; print(secrets.token_urlsafe(48))"   # EMAIL_VERIFICATION_TOKEN_SECRET
 python -c "import secrets; print(secrets.token_urlsafe(48))"   # FRONTEND_BASE_URL (Streamlit app URL)
 ```
 

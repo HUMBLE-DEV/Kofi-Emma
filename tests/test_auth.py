@@ -96,12 +96,12 @@ check("garbage token returns None", decode_token("not.a.jwt") is None)
 # ----------------------------------------------------------------------
 section("3. itsdangerous URL-safe tokens")
 # ----------------------------------------------------------------------
-vtok = create_url_safe_token({"email": "a@b.com"}, settings.EMAIL_VERIFICATION_TOKEN_SECRET)
-vt = decode_url_safe_token(vtok, settings.EMAIL_VERIFICATION_TOKEN_SECRET)
+vtok = create_url_safe_token({"email": "a@b.com"}, settings.SECRET_KEY)
+vt = decode_url_safe_token(vtok, settings.SECRET_KEY)
 check("verification token decodes", vt is not None and vt["email"] == "a@b.com")
 check("wrong secret rejected", decode_url_safe_token(vtok, "totally-wrong") is None)
-check("garbage token rejected", decode_url_safe_token("garbage", settings.EMAIL_VERIFICATION_TOKEN_SECRET) is None)
-expired = decode_url_safe_token(vtok, settings.EMAIL_VERIFICATION_TOKEN_SECRET, max_age=-1)
+check("garbage token rejected", decode_url_safe_token("garbage", settings.SECRET_KEY) is None)
+expired = decode_url_safe_token(vtok, settings.SECRET_KEY, max_age=-1)
 check("expired token rejected", expired is None)
 
 # ----------------------------------------------------------------------
@@ -196,7 +196,7 @@ with TestClient(app) as client:
         check("refreshed access token works on /me", r2.status_code == 200, r2.text[:200])
 
     # -- email verification --
-    vtok = create_url_safe_token({"email": email}, settings.EMAIL_VERIFICATION_TOKEN_SECRET)
+    vtok = create_url_safe_token({"email": email}, settings.SECRET_KEY)
     r = client.get(f"/api/v1/auth/verify?token={vtok}")
     check("GET /verify with valid token returns 200", r.status_code == 200, r.text[:200])
 
