@@ -7,8 +7,16 @@ os.environ["TOKEN_BLOCKLIST_STRICT"] = "True"
 from fastapi.testclient import TestClient
 from src.app import app
 from src.auth.utility import create_access_token
+from src.auth import dependency as auth_dependency
 
-tok = create_access_token({"email": "nobody@example.com", "user_id": "1", "role": "student", "name": "x"})
+# Simulate Redis being unavailable so strict mode triggers.
+class FakeRedisDown:
+    async def get(self, name):
+        raise ConnectionError("Redis is unavailable")
+
+auth_dependency._token_store = FakeRedisDown()
+
+tok = create_access_token({"email": "student@example.com", "user_id": "1", "role": "student", "name": "Test Student"})
 
 with TestClient(app, raise_server_exceptions=False) as client:
     r = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {tok}"})
