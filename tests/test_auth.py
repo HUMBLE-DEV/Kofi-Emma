@@ -96,12 +96,11 @@ check("garbage token returns None", decode_token("not.a.jwt") is None)
 # ----------------------------------------------------------------------
 section("3. itsdangerous URL-safe tokens")
 # ----------------------------------------------------------------------
-vtok = create_url_safe_token({"email": "a@b.com"}, settings.SECRET_KEY)
-vt = decode_url_safe_token(vtok, settings.SECRET_KEY)
+vtok = create_url_safe_token({"email": "a@b.com"})
+vt = decode_url_safe_token(vtok)
 check("verification token decodes", vt is not None and vt["email"] == "a@b.com")
-check("wrong secret rejected", decode_url_safe_token(vtok, "totally-wrong") is None)
-check("garbage token rejected", decode_url_safe_token("garbage", settings.SECRET_KEY) is None)
-expired = decode_url_safe_token(vtok, settings.SECRET_KEY, max_age=-1)
+check("garbage token rejected", decode_url_safe_token("garbage") is None)
+expired = decode_url_safe_token(vtok, max_age=-1)
 check("expired token rejected", expired is None)
 
 # ----------------------------------------------------------------------
@@ -196,7 +195,7 @@ with TestClient(app) as client:
         check("refreshed access token works on /me", r2.status_code == 200, r2.text[:200])
 
     # -- email verification --
-    vtok = create_url_safe_token({"email": email}, settings.SECRET_KEY)
+    vtok = create_url_safe_token({"email": email})
     r = client.get(f"/api/v1/auth/verify?token={vtok}")
     check("GET /verify with valid token returns 200", r.status_code == 200, r.text[:200])
 
@@ -217,7 +216,7 @@ with TestClient(app) as client:
           r.json()["message"] == r_unknown.json()["message"])
 
     # -- reset password --
-    rtok = create_url_safe_token({"email": email}, settings.SECRET_KEY)
+    rtok = create_url_safe_token({"email": email})
     r = client.post(f"/api/v1/auth/reset_password?token={rtok}", json={
         "new_password": "NewResearchPass456!", "confirm_password": "NewResearchPass456!",
     })
@@ -229,7 +228,7 @@ with TestClient(app) as client:
     new_access = r.json()["access_token"] if r.status_code == 200 else None
 
     # -- mismatched confirmation --
-    mtok = create_url_safe_token({"email": email}, settings.SECRET_KEY)
+    mtok = create_url_safe_token({"email": email})
     r = client.post(f"/api/v1/auth/reset_password?token={mtok}", json={
         "new_password": "AnotherPass789!", "confirm_password": "DifferentPass789!",
     })
@@ -239,8 +238,8 @@ with TestClient(app) as client:
     # Swap in an in-memory blocklist so revocation is exercised even when no
     # Redis server is running locally.
     fake_redis = FakeRedis()
-    original_store = auth_dependency.token_store
-    auth_dependency.token_store = fake_redis
+    original_store = auth_dependency._token_store
+    auth_dependency._token_store = fake_redis
     try:
         r = client.get("/api/v1/auth/logout", headers={"Authorization": f"Bearer {new_access}"})
         check("GET /logout returns 200", r.status_code == 200, r.text[:200])
