@@ -271,6 +271,7 @@ jobs:
             -e LANGSMITH_API_KEY \
             -e LANGCHAIN_TRACING_V2="true" \
             -e LANGCHAIN_PROJECT="ScholarGraph-Prod" \
+            -e PUBLIC_BASE_URL=${{ vars.PUBLIC_BASE_URL }} \ 
             -e REDIS_URL=redis://ScholarGraph-redis:6379/0 \
             -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
             "${IMAGE_PATH}-backend:main" \
