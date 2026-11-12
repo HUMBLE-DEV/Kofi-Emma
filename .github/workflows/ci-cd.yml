@@ -210,6 +210,7 @@ jobs:
           FRONTEND_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           TOKEN_BLOCKLIST_STRICT: "true"
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           docker run -d \
             --restart unless-stopped \
@@ -235,7 +236,7 @@ jobs:
             -e LANGCHAIN_TRACING_V2="true" \
             -e LANGCHAIN_PROJECT="ScholarGraph-Prod" \
             -e REDIS_URL=redis://Scholargraph-redis:6379/0 \
-            -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
+            -e DATABASE_URL \
             "${IMAGE_PATH}-backend:main"
 
       # ── Celery worker ──
@@ -253,6 +254,7 @@ jobs:
           MAIL_SERVER: ${{ secrets.MAIL_SERVER }}
           MAIL_PORT: ${{ secrets.MAIL_PORT }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           docker run -d \
             --restart unless-stopped \
@@ -275,7 +277,7 @@ jobs:
             -e LANGCHAIN_PROJECT="ScholarGraph-Prod" \
             -e PUBLIC_BASE_URL=${{ vars.PUBLIC_BASE_URL }} \
             -e REDIS_URL=redis://ScholarGraph-redis:6379/0 \
-            -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
+            -e DATABASE_URL \
             "${IMAGE_PATH}-backend:main" \
             celery -A src.celery_worker.celery_app worker --loglevel=info
 
