@@ -179,9 +179,9 @@ jobs:
           
       - name: Create Docker Network & Volumes
         run: |
-          docker network create scholargraph-net
-          docker volume create scholargraph_chroma
-          docker volume create scholargraph_uploads
+          docker network create scholargraph-net 2>/dev/null || true
+          docker volume create scholargraph_chroma 2>/dev/null || true
+          docker volume create scholargraph_uploads 2>/dev/null || true
 
       # ── Redis (token blocklist + Celery broker) ──
       - name: Start Redis container
@@ -283,7 +283,7 @@ jobs:
       - name: Run Streamlit container
         env:
           IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}
-          API_BASE_URL: https://scholargraph.duckdns.org/api
+          API_BASE_URL: https://scholargraph.duckdns.org
           FRONTEND_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
         run: |
           docker run -d \

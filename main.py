@@ -317,10 +317,13 @@ def render_auth_sidebar():
         tab_login, tab_signup = st.tabs(["Login", "Sign Up"])
 
         with tab_login:
-            email = st.text_input("Email", key="login_email")
-            password = st.text_input("Password", type="password", key="login_password")
-            if st.button("Log In", use_container_width=True):
-                login(email, password)
+            with st.form(key="login_form", clear_on_submit=True):
+                email = st.text_input("Email", key="login_email")
+                password = st.text_input("Password", type="password", key="login_password")
+                submit_login = st.form_submit_button("Log In", use_container_width=True)
+
+                if submit_login:
+                    login(email, password)
 
             st.divider()
             st.caption("If you don't have an account, you can sign up above.")
@@ -340,17 +343,20 @@ def render_auth_sidebar():
                         st.rerun()
 
         with tab_signup:
-            s_email = st.text_input("Email", key="signup_email")
-            s_username = st.text_input("Name", key="signup_username")
-            s_password = st.text_input("Password", type="password", key="signup_password")
-            s_confirm = st.text_input("Confirm", type="password", key="signup_confirm")
-            if st.button("Create Account", use_container_width=True):
-                if s_password != s_confirm:
-                    st.error("Passwords do not match")
-                elif len(s_password) < 8:
-                    st.error("Password must be at least 8 characters")
-                else:
-                    signup(s_email, s_username, s_password)
+            with st.form(key="signup_form", clear_on_submit=True):
+                s_email = st.text_input("Email", key="signup_email")
+                s_username = st.text_input("Name", key="signup_username")
+                s_password = st.text_input("Password", type="password", key="signup_password")
+                s_confirm = st.text_input("Confirm", type="password", key="signup_confirm")
+                submit_signup = st.form_submit_button("Create Account", use_container_width=True)
+
+                if submit_signup:
+                    if s_password != s_confirm:
+                        st.error("Passwords do not match")
+                    elif len(s_password) < 8:
+                        st.error("Password must be at least 8 characters")
+                    else:
+                        signup(s_email, s_username, s_password)
 
 
 # =====================================================================
