@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     TOKEN_BLOCKLIST_STRICT: bool = False
 
     # Comma-separated list of allowed CORS origins for the FastAPI backend.
-    CORS_ORIGINS: str = "*"
+    CORS_ORIGINS: str = "http://localhost:8501,https://scholargraph.duckdns.org"
     ALLOWED_HOSTS: str = "*"
 
     DEFAULT_MODEL: str = "gemini-2.5-flash"

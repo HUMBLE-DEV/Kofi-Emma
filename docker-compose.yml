@@ -1,6 +1,22 @@
-name: scholargraph # Fixes the folder naming issue
+name: scholargraph
 
 services:
+  # ── Caddy: HTTPS Reverse Proxy ──
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: scholargraph-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
   # ── Redis ──
   redis:
     image: redis:7-alpine
@@ -19,12 +35,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: backend # 🚨 Use the backend stage
+      target: backend
     container_name: scholargraph-backend
     init: true
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    # Port 8000 no longer exposed publicly — Caddy proxies internally
+    expose:
+      - "8000"
     env_file:
       - .env
     environment:
@@ -44,7 +61,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: backend # 🚨 Uses the SAME backend image
+      target: backend
     container_name: scholargraph-celery
     init: true
     restart: unless-stopped
@@ -66,7 +83,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: frontend 
+      target: frontend
     container_name: scholargraph-frontend
     restart: unless-stopped
     env_file:
@@ -76,8 +93,9 @@ services:
       - FRONTEND_BASE_URL=${FRONTEND_BASE_URL}
     depends_on:
       - backend
-    ports:
-      - "80:8501"
+    # Port 8501 no longer exposed publicly — Caddy proxies internally
+    expose:
+      - "8501"
     volumes:
       - uploads_data:/app/uploads
 
@@ -86,3 +104,5 @@ volumes:
   chroma_data:
   uploads_data:
   app_data:
+  caddy_data:
+  caddy_config:

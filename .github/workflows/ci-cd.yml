@@ -207,6 +207,7 @@ jobs:
           MAIL_SERVER: ${{ secrets.MAIL_SERVER }}
           MAIL_PORT: ${{ secrets.MAIL_PORT }}
           PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+          FRONTEND_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           TOKEN_BLOCKLIST_STRICT: "true"
         run: |
@@ -228,11 +229,12 @@ jobs:
             -e MAIL_SERVER \
             -e MAIL_PORT \
             -e PUBLIC_BASE_URL \
+            -e FRONTEND_BASE_URL \
             -e TOKEN_BLOCKLIST_STRICT \
             -e LANGSMITH_API_KEY \
             -e LANGCHAIN_TRACING_V2="true" \
             -e LANGCHAIN_PROJECT="ScholarGraph-Prod" \
-            -e REDIS_URL=redis://ScholarGraph-redis:6379/0 \
+            -e REDIS_URL=redis://Scholargraph-redis:6379/0 \
             -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
             "${IMAGE_PATH}-backend:main"
 
@@ -281,14 +283,13 @@ jobs:
       - name: Run Streamlit container
         env:
           IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}
-          API_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+          API_BASE_URL: https://scholargraph.duckdns.org/api
           FRONTEND_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
         run: |
           docker run -d \
             --restart unless-stopped \
             --name stapp \
             --network scholargraph-net \
-            -p 80:8501 \
             -e API_BASE_URL \
             -e FRONTEND_BASE_URL \
             "${IMAGE_PATH}-frontend:main"

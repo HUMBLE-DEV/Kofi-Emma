@@ -1,0 +1,34 @@
+# 1. THE MAIN DOMAIN (Handles the SSL and routing)
+scholargraph.duckdns.org {
+    # Route API traffic to FastAPI
+    handle /api/* {
+        reverse_proxy scholargraph-backend:8000 {
+            # Pass the real user's IP to FastAPI
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            # Tell FastAPI the connection is secure (HTTPS)
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Route everything else to Streamlit
+    handle {
+        reverse_proxy scholargraph-frontend:8501 {
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+}
+
+# 2. THE AWS EC2 LINK (Redirects to your domain)
+# If someone visits your raw AWS URL, send them to the nice domain
+ec2-13-53-128-130.eu-north-1.compute.amazonaws.com {
+    redir https://scholargraph.duckdns.org{uri} permanent
+}
+
+# 3. THE HTTP REDIRECT
+# If someone types http://, force them to https://
+:80 {
+    redir https://scholargraph.duckdns.org{uri} permanent
+}
