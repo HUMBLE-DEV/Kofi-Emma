@@ -55,10 +55,7 @@ STREAMING_NODES = {"chatbot", "research_synthesizer"}
 
 admin_required = RoleChecker(["admin"])
 
-user_required = RoleChecker([
-    "user",
-    "admin"
-])
+user_required = RoleChecker(["student", "admin", "user"])
 
 # =========================================================================
 # Small helpers

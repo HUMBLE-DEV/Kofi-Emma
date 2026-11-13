@@ -238,6 +238,7 @@ jobs:
             -e REDIS_URL=redis://Scholargraph-redis:6379/0 \
             -e DATABASE_URL \
             "${IMAGE_PATH}-backend:main"
+            DATABASE_URL=postgresql+asyncpg://LMLA_db_owner:npg_OjQ6J4YnWavl@ep-restless-tooth-b4m6tmuc.c-6.us-east-2.aws.neon.tech/LMLA_db
 
       # ── Celery worker ──
       - name: Run Celery worker container
